@@ -1,5 +1,7 @@
 <script>
-  import { currentPage, currentUser, theme } from './stores/state.js'
+  import { onMount } from 'svelte'
+  import { supabase } from './lib/supabase.js'
+  import { currentPage, currentUser } from './stores/state.js'
   import Sidebar from './components/Sidebar.svelte'
   import Login from './pages/Login.svelte'
   import Dashboard from './pages/Dashboard.svelte'
@@ -10,15 +12,34 @@
   import Lab from './pages/Lab.svelte'
 
   let loggedIn = false
+  let authReady = false   // prevents flash of login screen on refresh
 
-  function handleLogin(e) {
-    currentUser.set(e.detail.user)
-    loggedIn = true
-  }
+  onMount(() => {
+    // Resolve existing session (handles OAuth redirects too)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      loggedIn = !!session
+      if (session) currentUser.set('arshita')
+      authReady = true
+    })
+
+    // Keep loggedIn in sync for sign-in / sign-out events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      loggedIn = !!session
+      if (session) currentUser.set('arshita')
+      authReady = true
+    })
+
+    return () => subscription.unsubscribe()
+  })
 </script>
 
-{#if !loggedIn}
-  <Login on:login={handleLogin} />
+{#if !authReady}
+  <!-- Blank while Supabase resolves the session to avoid a login flash -->
+  <div class="auth-loading">
+    <div class="auth-spinner"></div>
+  </div>
+{:else if !loggedIn}
+  <Login />
 {:else}
   <div class="app-layout">
     <Sidebar />
@@ -53,4 +74,21 @@
     overflow-y: auto;
     overflow-x: hidden;
   }
+
+  .auth-loading {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+  }
+
+  .auth-spinner {
+    width: 24px; height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg) } }
 </style>
